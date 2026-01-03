@@ -14,7 +14,7 @@ const MAX_MSG_PER_PCKT: usize = 4;
 
 pub struct ITMParser<'a> {
     byte_buffer: [Option<u8>; 6], // 6 So we can detect SYNC frames
-    port_config: &'a [ITMPortConvType; NUM_ITM_PORTS],
+    port_config: &'a [Option<ITMPortConvType>; NUM_ITM_PORTS],
 }
 
 pub struct ITMConvValue {
@@ -53,7 +53,7 @@ impl<'a> ITMParser<'a> {
     // Identity bit is 0 for software STIM source, 1 for hardware source
     const PCKT_HWSC: u8 = 0b00000100;
 
-    pub fn new(port_conf: &'a [ITMPortConvType; NUM_ITM_PORTS]) -> Self {
+    pub fn new(port_conf: &'a [Option<ITMPortConvType>; NUM_ITM_PORTS]) -> Self {
         Self {
             byte_buffer: Default::default(),
             port_config: port_conf,
@@ -107,13 +107,12 @@ impl<'a> ITMParser<'a> {
                 // Remove this data from the buffer
                 let bytes = self.pop_data(size, 0);
 
-                let parse_type = self.port_config[addr as usize];
+                let parse_type = self.port_config[addr as usize].ok_or(ITMParseError::UnconfiguredPort { addr })?;
 
-                (ITMPortConvType::NONE != parse_type)
-                    .ok_or(ITMParseError::UnconfiguredPort { addr })?;
                 // XXX We only support one -> many (ITM packets -> target type)
-                (size % parse_type.size() == 0)
-                    .ok_or(ITMParseError::TracePacketSizeMismatch { addr })?;
+                if size % parse_type.size() != 0 {
+                    return Err(ITMParseError::TracePacketSizeMismatch { addr });
+                }
 
                 let data: Vec<ITMPortConvType, { MAX_MSG_PER_PCKT }> = bytes
                     .chunks_exact(parse_type.size())
@@ -154,10 +153,8 @@ impl<'a> ITMParser<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ITMPortConvType {
-    #[default]
-    NONE,
     CHAR(u8),
     U32(u32),
     I32(i32),
@@ -168,7 +165,6 @@ pub enum ITMPortConvType {
 impl ITMPortConvType {
     pub fn size(&self) -> usize {
         match self {
-            Self::NONE => 0,
             Self::CHAR(_) => 1,
             Self::U32(_) | Self::I32(_) | Self::F32(_) | Self::I16F16(_) => 4,
         }
@@ -177,7 +173,6 @@ impl ITMPortConvType {
     // invalid to call this function w/o correct size of bytes
     pub fn with_data(&self, bytes: &[u8]) -> Self {
         match self {
-            Self::NONE => Self::NONE,
             Self::CHAR(_) => Self::CHAR(bytes[0]),
             Self::U32(_) => Self::U32(u32::from_le_bytes(bytes.try_into().unwrap())),
             Self::I32(_) => Self::I32(i32::from_le_bytes(bytes.try_into().unwrap())),
@@ -190,7 +185,6 @@ impl ITMPortConvType {
 impl Display for ITMPortConvType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            Self::NONE => write!(f, "NONE"),
             Self::CHAR(x) => write!(f, "{}", *x as char),
             Self::U32(x) => write!(f, "{}", x),
             Self::I32(x) => write!(f, "{}", x),

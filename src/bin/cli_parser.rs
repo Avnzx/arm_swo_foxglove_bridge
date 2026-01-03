@@ -10,10 +10,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut listener = TcpStream::connect("127.0.0.1:3344")?;
     listener.set_nodelay(true)?;
 
-    let mut conf = [ITMPortConvType::NONE; NUM_ITM_PORTS];
-    conf[0] = ITMPortConvType::U32(0);
-    conf[1] = ITMPortConvType::I16F16(I16F16::ZERO);
-    conf[2] = ITMPortConvType::CHAR(0);
+    let mut conf = [None; NUM_ITM_PORTS];
+    conf[0] = Some(ITMPortConvType::U32(0));
+    conf[1] = Some(ITMPortConvType::I16F16(I16F16::ZERO));
+    conf[2] = Some(ITMPortConvType::CHAR(0));
 
     let mut parser = ITMParser::new(&conf);
 
