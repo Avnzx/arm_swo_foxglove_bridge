@@ -12,18 +12,19 @@ pub const NUM_ITM_PORTS: usize = 32;
 // Currently the smallest type we support is u8's and we can pack 4 per frame
 const MAX_MSG_PER_PCKT: usize = 4;
 
-pub struct ITMParser<'a> {
+pub struct ITMParser {
     byte_buffer: [Option<u8>; 6], // 6 So we can detect SYNC frames
-    port_config: &'a [Option<ITMPortConvType>; NUM_ITM_PORTS],
+    port_config: [Option<ITMPortConvType>; NUM_ITM_PORTS],
 }
 
+#[derive(Debug, Clone)]
 pub struct ITMConvValue {
     // TODO timestamp
     pub port: usize,
     pub data: Vec<ITMPortConvType, { MAX_MSG_PER_PCKT }>,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ITMParseError {
     #[error("Not enough bytes in buf to decode packet on port {addr}")]
     UnderfullPacket { addr: usize }, // Not an error! just wait and call update() more times
@@ -41,7 +42,7 @@ pub enum ITMParseError {
     UnknownError,
 }
 
-impl<'a> ITMParser<'a> {
+impl ITMParser {
     const MAX_PAYLOAD_SZ: usize = 4;
 
     const PCKT_SYNC: [Option<u8>; 6] = [Some(0), Some(0), Some(0), Some(0), Some(0), Some(0x80)];
@@ -53,7 +54,7 @@ impl<'a> ITMParser<'a> {
     // Identity bit is 0 for software STIM source, 1 for hardware source
     const PCKT_HWSC: u8 = 0b00000100;
 
-    pub fn new(port_conf: &'a [Option<ITMPortConvType>; NUM_ITM_PORTS]) -> Self {
+    pub fn new(port_conf: [Option<ITMPortConvType>; NUM_ITM_PORTS]) -> Self {
         Self {
             byte_buffer: Default::default(),
             port_config: port_conf,
@@ -107,7 +108,8 @@ impl<'a> ITMParser<'a> {
                 // Remove this data from the buffer
                 let bytes = self.pop_data(size, 0);
 
-                let parse_type = self.port_config[addr as usize].ok_or(ITMParseError::UnconfiguredPort { addr })?;
+                let parse_type = self.port_config[addr as usize]
+                    .ok_or(ITMParseError::UnconfiguredPort { addr })?;
 
                 // XXX We only support one -> many (ITM packets -> target type)
                 if size % parse_type.size() != 0 {

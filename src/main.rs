@@ -1,11 +1,14 @@
 #![feature(bool_to_result)]
 
-//! Example of a scrolling plot with new data points being added over time.
-use std::net::TcpStream;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use iced::Length;
 use iced::Theme;
 use iced::alignment;
+use iced::futures::SinkExt;
+use iced::futures::channel::mpsc;
+use iced::futures::executor::block_on;
 use iced::padding;
 use iced::widget::Grid;
 use iced::widget::Space;
@@ -21,8 +24,13 @@ use iced_plot::Series;
 use iced_plot::{MarkerStyle, PlotWidgetBuilder};
 
 use iced::widget::text;
-use iced::window;
 use iced::{Color, Element};
+use iced_swviewer::itm_parser::NUM_ITM_PORTS;
+
+use crate::daq::{DAQEvent, DAQInput};
+use crate::itm_parser::ITMPortConvType;
+
+use fixed::types::I16F16;
 
 pub mod daq;
 pub mod itm_parser;
@@ -42,6 +50,13 @@ enum Message {
     PlotMessage(PlotUiMessage),
     Tick,
     TraceTypeSelected(usize, TraceType),
+    DAQEvent(DAQEvent),
+}
+
+impl From<DAQEvent> for Message {
+    fn from(evt: DAQEvent) -> Self {
+        Message::DAQEvent(evt)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -49,17 +64,46 @@ enum TraceType {
     #[default]
     NONE,
     CHAR,
-    I16F16,
+    U32,
+    I32,
     F32,
+    I16F16,
 }
-
 impl TraceType {
-    const ALL: [TraceType; 4] = [
+    const ALL: [TraceType; 6] = [
         TraceType::NONE,
         TraceType::CHAR,
-        TraceType::I16F16,
+        TraceType::U32,
+        TraceType::I32,
         TraceType::F32,
+        TraceType::I16F16,
     ];
+}
+
+impl From<Option<ITMPortConvType>> for TraceType {
+    fn from(val: Option<itm_parser::ITMPortConvType>) -> Self { 
+        match val {
+            None => Self::NONE,
+            Some(ITMPortConvType::CHAR(_)) => Self::CHAR,
+            Some(ITMPortConvType::U32(_)) => Self::U32,
+            Some(ITMPortConvType::I32(_)) => Self::I32,
+            Some(ITMPortConvType::F32(_)) => Self::F32,
+            Some(ITMPortConvType::I16F16(_)) => Self::I16F16,
+        }
+    }
+}
+
+impl From<TraceType> for Option<ITMPortConvType> {
+    fn from(val: TraceType) -> Self { 
+        match val {
+            TraceType::NONE => None,
+            TraceType::CHAR => Some(ITMPortConvType::CHAR(0)),
+            TraceType::U32 => Some(ITMPortConvType::U32(0)),
+            TraceType::I32 => Some(ITMPortConvType::I32(0)),
+            TraceType::F32 => Some(ITMPortConvType::F32(0.0)),
+            TraceType::I16F16 => Some(ITMPortConvType::I16F16(I16F16::ZERO)),
+        }
+    }
 }
 
 impl std::fmt::Display for TraceType {
@@ -68,10 +112,12 @@ impl std::fmt::Display for TraceType {
             f,
             "{}",
             match self {
-                TraceType::NONE => "OFF",
+                TraceType::NONE => "Off",
                 TraceType::CHAR => "char",
-                TraceType::I16F16 => "I16F16",
+                TraceType::U32 => "u32",
+                TraceType::I32 => "i32",
                 TraceType::F32 => "f32",
+                TraceType::I16F16 => "I16F16",
             }
         )
     }
@@ -79,12 +125,13 @@ impl std::fmt::Display for TraceType {
 
 #[derive(Default)]
 struct AppConfig {
-    channels: [TraceType; ITM_CHANNELS],
+    channels: [Option<ITMPortConvType>; NUM_ITM_PORTS],
 }
 
 #[derive(Default)]
 struct AppState {
     global_run: bool,
+    tcp_channel: Option<mpsc::Sender<DAQInput>>
 }
 
 struct App {
@@ -100,7 +147,15 @@ impl App {
     fn update(&mut self, message: Message) {
         match message {
             Message::ToggleGlobalRun => {
-                self.state.global_run = !self.state.global_run;
+                //self.state.global_run = !self.state.global_run;
+
+                if let Some(chan) = self.state.tcp_channel.as_mut() {
+                    block_on(chan.send(if !self.state.global_run {
+                        DAQInput::Connect(self.config.channels)
+                    } else {
+                        DAQInput::Disconnect
+                    })).unwrap();
+                }
             }
             Message::PlotMessage(plot_msg) => {
                 self.widget.update(plot_msg);
@@ -126,7 +181,22 @@ impl App {
                 // TODO self.widget.autoscale_on_updates(false);
             }
             Message::TraceTypeSelected(port, ty) => {
-                self.config.channels[port] = ty;
+                self.config.channels[port] = ty.into();
+            }
+            Message::DAQEvent(evt) => {
+                eprintln!("{:?}", evt);
+                match evt {
+                    DAQEvent::Ready(chan) => { 
+                        self.state.tcp_channel = Some(chan);
+                    }
+                    DAQEvent::Connected => {
+                        self.state.global_run = true;
+                    }
+                    DAQEvent::Disconnected | DAQEvent::ConnectionError => {
+                        self.state.global_run = false;
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -141,7 +211,7 @@ impl App {
             channel_config = channel_config.push(
                 pick_list(
                     &TraceType::ALL[..],
-                    Some(self.config.channels[x]),
+                    Some::<TraceType>(self.config.channels[x].into()), // FIXME
                     move |ty| -> Message { Message::TraceTypeSelected(x, ty) },
                 )
                 .width(Length::Fill),
@@ -245,10 +315,8 @@ impl App {
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        let a = TcpStream::connect("127.0.0.1:3344").unwrap();
-
-        //a.read_array()
-        window::frames().map(|_| Message::Tick)
+        //window::frames().map(|_| Message::Tick)
+        daq::subscription().map(|x| x.into())
     }
 
     fn new() -> Self {

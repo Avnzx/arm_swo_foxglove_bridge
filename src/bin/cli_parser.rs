@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     conf[1] = Some(ITMPortConvType::I16F16(I16F16::ZERO));
     conf[2] = Some(ITMPortConvType::CHAR(0));
 
-    let mut parser = ITMParser::new(&conf);
+    let mut parser = ITMParser::new(conf);
 
     loop {
         let byte = listener.read_array::<1>()?[0];
