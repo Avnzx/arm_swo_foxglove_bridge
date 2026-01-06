@@ -1,16 +1,16 @@
 use std::future::pending;
 
-use iced::futures::future::Either;
-use iced::{Subscription, futures::select};
-use iced::futures::{FutureExt, Stream};
 use iced::futures::channel::mpsc;
+use iced::futures::future::Either;
 use iced::futures::sink::SinkExt;
+use iced::futures::{FutureExt, Stream};
 use iced::stream;
+use iced::{Subscription, futures::select};
 use smol::io::AsyncReadExt;
 use smol::stream::StreamExt;
 
 use crate::itm_parser::{ITMConvValue, ITMParseError, ITMParser, ITMPortConvType};
-use smol::{io::Bytes, net::TcpStream, prelude::*, Unblock};
+use smol::{Unblock, io::Bytes, net::TcpStream, prelude::*};
 
 #[derive(Debug, Clone)]
 pub enum DAQEvent {
@@ -27,18 +27,16 @@ pub enum DAQInput {
     Disconnect,
 }
 
-
 enum InternalEvt<T> {
     ControlEvt(DAQInput),
-    DataEvt(T)
+    DataEvt(T),
 }
 
 impl<T> From<DAQInput> for InternalEvt<T> {
-    fn from(val: DAQInput) -> Self { 
+    fn from(val: DAQInput) -> Self {
         Self::ControlEvt(val)
     }
 }
-
 
 pub fn some_worker() -> impl Stream<Item = DAQEvent> {
     stream::channel(100, async |mut output| {
@@ -60,7 +58,7 @@ pub fn some_worker() -> impl Stream<Item = DAQEvent> {
                 x = control_fut => x.into(),
                 y = data_fut => InternalEvt::DataEvt(y),
             };
-            
+
             match comb_fut {
                 InternalEvt::ControlEvt(DAQInput::Connect(conf)) => {
                     let maybe_tcp_con = TcpStream::connect("127.0.0.1:3344").await;
@@ -68,9 +66,11 @@ pub fn some_worker() -> impl Stream<Item = DAQEvent> {
                         output.send(DAQEvent::ConnectionError).await.unwrap();
                         continue;
                     }
-                    
+
                     let tcp_con = maybe_tcp_con.unwrap();
-                    tcp_con.set_nodelay(true).expect("Unable to set_nodelay on TCP connection!");
+                    tcp_con
+                        .set_nodelay(true)
+                        .expect("Unable to set_nodelay on TCP connection!");
 
                     conn = Some((ITMParser::new(conf), tcp_con.bytes()));
                     output.send(DAQEvent::Connected).await.unwrap();

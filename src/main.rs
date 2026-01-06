@@ -1,8 +1,6 @@
 #![feature(bool_to_result)]
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use fixed::types::I16F16;
 use iced::Length;
 use iced::Theme;
 use iced::alignment;
@@ -25,27 +23,16 @@ use iced_plot::{MarkerStyle, PlotWidgetBuilder};
 
 use iced::widget::text;
 use iced::{Color, Element};
-use iced_swviewer::itm_parser::NUM_ITM_PORTS;
+use crate::{
+    daq::{DAQEvent, DAQInput},
+    itm_parser::{ITMPortConvType, NUM_ITM_PORTS},
+};
 
-use crate::daq::{DAQEvent, DAQInput};
-use crate::itm_parser::ITMPortConvType;
-
-use fixed::types::I16F16;
-
-pub mod daq;
-pub mod itm_parser;
-
-fn main() -> iced::Result {
-    iced::application(App::new, App::update, App::view)
-        .subscription(App::subscription)
-        .theme(Theme::CatppuccinMacchiato)
-        .run()
-}
-
-const ITM_CHANNELS: usize = 32;
+mod daq;
+mod itm_parser;
 
 #[derive(Debug, Clone)]
-enum Message {
+pub enum Message {
     ToggleGlobalRun,
     PlotMessage(PlotUiMessage),
     Tick,
@@ -60,7 +47,7 @@ impl From<DAQEvent> for Message {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum TraceType {
+pub enum TraceType {
     #[default]
     NONE,
     CHAR,
@@ -70,7 +57,7 @@ enum TraceType {
     I16F16,
 }
 impl TraceType {
-    const ALL: [TraceType; 6] = [
+    pub const ALL: [TraceType; 6] = [
         TraceType::NONE,
         TraceType::CHAR,
         TraceType::U32,
@@ -81,7 +68,7 @@ impl TraceType {
 }
 
 impl From<Option<ITMPortConvType>> for TraceType {
-    fn from(val: Option<itm_parser::ITMPortConvType>) -> Self { 
+    fn from(val: Option<itm_parser::ITMPortConvType>) -> Self {
         match val {
             None => Self::NONE,
             Some(ITMPortConvType::CHAR(_)) => Self::CHAR,
@@ -94,7 +81,7 @@ impl From<Option<ITMPortConvType>> for TraceType {
 }
 
 impl From<TraceType> for Option<ITMPortConvType> {
-    fn from(val: TraceType) -> Self { 
+    fn from(val: TraceType) -> Self {
         match val {
             TraceType::NONE => None,
             TraceType::CHAR => Some(ITMPortConvType::CHAR(0)),
@@ -123,6 +110,13 @@ impl std::fmt::Display for TraceType {
     }
 }
 
+fn main() -> iced::Result {
+    iced::application(App::new, App::update, App::view)
+        .subscription(App::subscription)
+        .theme(Theme::CatppuccinMacchiato)
+        .run()
+}
+
 #[derive(Default)]
 struct AppConfig {
     channels: [Option<ITMPortConvType>; NUM_ITM_PORTS],
@@ -131,7 +125,7 @@ struct AppConfig {
 #[derive(Default)]
 struct AppState {
     global_run: bool,
-    tcp_channel: Option<mpsc::Sender<DAQInput>>
+    tcp_channel: Option<mpsc::Sender<DAQInput>>,
 }
 
 struct App {
@@ -154,7 +148,8 @@ impl App {
                         DAQInput::Connect(self.config.channels)
                     } else {
                         DAQInput::Disconnect
-                    })).unwrap();
+                    }))
+                    .unwrap();
                 }
             }
             Message::PlotMessage(plot_msg) => {
@@ -186,7 +181,7 @@ impl App {
             Message::DAQEvent(evt) => {
                 eprintln!("{:?}", evt);
                 match evt {
-                    DAQEvent::Ready(chan) => { 
+                    DAQEvent::Ready(chan) => {
                         self.state.tcp_channel = Some(chan);
                     }
                     DAQEvent::Connected => {
@@ -206,12 +201,12 @@ impl App {
             .columns(2)
             .spacing(5)
             .height(Sizing::EvenlyDistribute(Length::Shrink));
-        for x in 0..ITM_CHANNELS {
+        for x in 0..NUM_ITM_PORTS {
             channel_config = channel_config.push(text(format!("CH{} ", x)));
             channel_config = channel_config.push(
                 pick_list(
                     &TraceType::ALL[..],
-                    Some::<TraceType>(self.config.channels[x].into()), // FIXME
+                    Some::<TraceType>(self.config.channels[x].into()),
                     move |ty| -> Message { Message::TraceTypeSelected(x, ty) },
                 )
                 .width(Length::Fill),
