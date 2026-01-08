@@ -10,7 +10,7 @@ use thiserror::Error;
 pub const NUM_ITM_PORTS: usize = 32;
 // In a single ITM Packet how many messages can we possibly fit?
 // Currently the smallest type we support is u8's and we can pack 4 per frame
-const MAX_MSG_PER_PCKT: usize = 4;
+pub const MAX_MSG_PER_PCKT: usize = 4;
 
 pub struct ITMParser {
     byte_buffer: [Option<u8>; 6], // 6 So we can detect SYNC frames
@@ -108,7 +108,7 @@ impl ITMParser {
                 // Remove this data from the buffer
                 let bytes = self.pop_data(size, 0);
 
-                let parse_type = self.port_config[addr as usize]
+                let parse_type = self.port_config[addr]
                     .ok_or(ITMParseError::UnconfiguredPort { addr })?;
 
                 // XXX We only support one -> many (ITM packets -> target type)
@@ -122,8 +122,8 @@ impl ITMParser {
                     .collect();
 
                 Ok(ITMConvValue {
-                    port: addr.into(),
-                    data: data,
+                    port: addr,
+                    data,
                 })
             }
             _ => Err(ITMParseError::UnknownError),
@@ -192,6 +192,28 @@ impl Display for ITMPortConvType {
             Self::I32(x) => write!(f, "{}", x),
             Self::F32(x) => write!(f, "{}", x),
             Self::I16F16(x) => write!(f, "{}", x),
+        }
+    }
+}
+
+impl From<ITMPortConvType> for f64 {
+    fn from(val: ITMPortConvType) -> Self {
+        match val {
+            ITMPortConvType::CHAR(_) => panic!(),
+            ITMPortConvType::U32(n) => n.into(),
+            ITMPortConvType::I32(n) => n.into(),
+            ITMPortConvType::F32(n) => n.into(),
+            ITMPortConvType::I16F16(n) => n.into(),
+        }
+    }
+}
+
+impl From<ITMPortConvType> for u8 {
+    fn from(val: ITMPortConvType) -> Self {
+        if let ITMPortConvType::CHAR(c) = val {
+            c
+        } else {
+            panic!()
         }
     }
 }

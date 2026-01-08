@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package bluesat;
+
+message NumericalMessage {
+  google.protobuf.Timestamp timestamp = 1;
+  double number = 2;
+}
