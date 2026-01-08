@@ -1,10 +1,7 @@
 # Usage
-- GUI Application
-    - `cargo run`
-- Simple CLI test program
-    - Modify `src/bin/cli_parser.rs` to match your application
-    - `cargo run --bin cli_parser`
+- Modify channel setup in `main.rs` 
+- `cargo r`
+- Connect via Foxglove SDK compatible sink (e.g. Lichtblick)
 
 # TODO's
-- Multi window support or pane grid support per DisplayWidget (Graph / Console)
-    - Both have examples in upstream iced repo
+- Save and load config from disk (RON)
