@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     conf.port_conf[0] = Some(PortConfiguration {
         name: "CH0".into(),
-        typ: ITMChannelConfig::U32,
+        typ: ITMChannelConfig::CHAR,
     });
     conf.port_conf[1] = Some(PortConfiguration {
         name: "CH1".into(),
@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(x) = &parsed {
             match x {
                 ITMParseError::UnderfullPacket { .. } => {}
-                _ => println!("{}", x),
+                _ => eprintln!("{}", x),
             }
 
             continue;
@@ -121,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for value in &val.data {
             print!("{}", value);
         }
-        println!("");
+        println!();
 
         fox_chans[val.port].as_mut().unwrap().update(val.data);
     }
