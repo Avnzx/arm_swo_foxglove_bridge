@@ -1,6 +1,8 @@
-use crate::NUM_ITM_PORTS;
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum NumericalFormat {
     U32,
     I32,
@@ -8,20 +10,20 @@ pub enum NumericalFormat {
     I16F16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum ItmChannelConfig {
     NUMERICAL(NumericalFormat),
-    CHARSTREAM,
+    TEXT,
     HEXDUMP,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct AppConfig {
-    pub port_conf: [Option<PortConfiguration>; NUM_ITM_PORTS],
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct PortConfiguration {
     pub name: String,
     pub typ: ItmChannelConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AppConfig {
+    pub port_conf: HashMap<usize, PortConfiguration>,
 }

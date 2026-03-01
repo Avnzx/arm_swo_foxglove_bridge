@@ -20,7 +20,7 @@ pub enum ChannelAdapter {
         topic: Channel<NumericalMessage>,
         format: NumericalFormat,
     },
-    CharStream {
+    Text {
         topic: Channel<Log>,
     },
     Hexdump {
@@ -36,7 +36,7 @@ const AUTOFLUSH_LIMIT: usize = 256;
 impl ChannelAdapter {
     pub fn update(&mut self, stream: &mut VecDeque<u8>) -> Option<()> {
         match self {
-            Self::CharStream { topic } => {
+            Self::Text { topic } => {
                 if stream.len() > AUTOFLUSH_LIMIT && !stream.contains(&b'\n') {
                     // Forcably insert a newline
                     stream.push_back(b'\n');
@@ -106,7 +106,7 @@ impl From<PortConfiguration> for ChannelAdapter {
                 topic: Channel::<NumericalMessage>::new(conf.name),
                 format,
             },
-            ItmChannelConfig::CHARSTREAM => ChannelAdapter::CharStream {
+            ItmChannelConfig::TEXT => ChannelAdapter::Text {
                 topic: Channel::<Log>::new(conf.name),
             },
             ItmChannelConfig::HEXDUMP => ChannelAdapter::Hexdump {
