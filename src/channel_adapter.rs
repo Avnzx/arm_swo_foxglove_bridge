@@ -68,7 +68,25 @@ impl ChannelAdapter {
             }
             Self::Hexdump { topic, len } => match *len {
                 Some(l) if stream.len() > l => {
-                    todo!()
+                    // Two hex characters per byte, a space/newline per word
+                    let mut message = String::with_capacity(l * 2 + l / 4);
+                    for i in 0..l {
+                        message.push_str(&format!("{:X?}", stream.pop_front()));
+
+                        if i == l - 1 {
+                            // Prevent trailing space/newline
+                        } else if i % 16 == 0 {
+                            message.push('\n');
+                        } else if i % 4 == 0 {
+                            message.push(' ');
+                        }
+                    }
+
+                    topic.log(&Log {
+                        message,
+                        timestamp: Some(Timestamp::now()),
+                        ..Default::default()
+                    });
                 }
                 None => {
                     *len = Some(stream.try_get_u32_le().ok()? as usize);
