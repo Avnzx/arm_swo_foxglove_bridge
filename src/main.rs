@@ -17,7 +17,14 @@ const READ_TIMEOUT: Duration = Duration::from_millis(10);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    assert!(args.len() == 2, "Invalid argument count");
+
+    if args.len() != 2 || args.iter().any(|s| s == "--help" || s == "-h") {
+        println!(
+            "Usage: arm_swo_foxglove_bridge [/path/to/config/file]\n\nExample config file:\n{}",
+            include_str!("example.ron")
+        );
+        return Ok(());
+    }
 
     let conf: AppConfig =
         ron::from_str(&read_to_string(&Path::new(&args[1])).expect("Failed to open config file"))
