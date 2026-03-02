@@ -34,12 +34,17 @@ pub enum ChannelAdapter {
 const AUTOFLUSH_LIMIT: usize = 256;
 
 impl ChannelAdapter {
+    // Returns Some(()) if bytes were consumed from the stream so that update is called again
     pub fn update(&mut self, stream: &mut VecDeque<u8>) -> Option<()> {
         match self {
             Self::Text { topic } => {
-                if stream.len() > AUTOFLUSH_LIMIT && !stream.contains(&b'\n') {
-                    // Forcably insert a newline
-                    stream.push_back(b'\n');
+                if !stream.contains(&b'\n') {
+                    // Force a flush if there hasn't been a newline for a while
+                    if stream.len() > AUTOFLUSH_LIMIT {
+                        stream.push_back(b'\n');
+                    } else {
+                        return None;
+                    }
                 }
 
                 let mut message = String::new();
@@ -67,19 +72,19 @@ impl ChannelAdapter {
                 });
             }
             Self::Hexdump { topic, len } => match *len {
-                Some(l) if stream.len() > l => {
+                Some(l) if stream.len() >= l => {
                     // Two hex characters per byte, a space/newline per word
                     let mut message = String::with_capacity(l * 2 + l / 4);
                     for i in 0..l {
-                        message.push_str(&format!("{:X?}", stream.pop_front()));
-
-                        if i == l - 1 {
-                            // Prevent trailing space/newline
+                        if i == 0 {
+                            // Prevent initial space/newline
                         } else if i % 16 == 0 {
                             message.push('\n');
                         } else if i % 4 == 0 {
                             message.push(' ');
                         }
+
+                        message.push_str(&format!("{:02X}", stream.pop_front().unwrap()));
                     }
 
                     topic.log(&Log {
@@ -91,7 +96,9 @@ impl ChannelAdapter {
                 None => {
                     *len = Some(stream.try_get_u32_le().ok()? as usize);
                 }
-                _ => {}
+                _ => {
+                    return None;
+                }
             },
         }
 
