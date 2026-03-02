@@ -2,6 +2,15 @@
 name = "arm_swo_foxglove_bridge"
 version = "0.1.0"
 edition = "2024"
+authors = ["Aavin Fernando <aavin.fernando@gmail.com>", "Evan La Fontaine"]
+license = "MIT OR Apache-2.0"
+description = "Bridge between ARM Serial Wire Out and Foxglove Studio / Lichtblick"
+readme = "README.md"
+homepage = "https://github.com/Avnzx/arm_swo_foxglove_bridge"
+repository = "https://github.com/Avnzx/arm_swo_foxglove_bridge"
+keywords = ["cli", "arm", "swo", "debugging"]
+categories = ["command-line-utilities"]
+
 
 [dependencies]
 fixed = "1.29.0"
