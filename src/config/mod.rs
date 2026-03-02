@@ -1,35 +1,29 @@
-use fixed::types::I16F16;
+use std::collections::HashMap;
 
-use crate::{ITMPortConvType, NUM_ITM_PORTS};
+use serde::Deserialize;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ITMChannelConfig {
-    CHAR,
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub enum NumericalFormat {
     U32,
     I32,
     F32,
     I16F16,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct AppConfig {
-    pub port_conf: [Option<PortConfiguration>; NUM_ITM_PORTS],
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub enum ItmChannelConfig {
+    NUMERICAL(NumericalFormat),
+    TEXT,
+    HEXDUMP,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct PortConfiguration {
     pub name: String,
-    pub typ: ITMChannelConfig,
+    pub typ: ItmChannelConfig,
 }
 
-impl From<PortConfiguration> for ITMPortConvType {
-    fn from(conf: PortConfiguration) -> Self {
-        match conf.typ {
-            ITMChannelConfig::CHAR => ITMPortConvType::CHAR(0),
-            ITMChannelConfig::U32 => ITMPortConvType::U32(0),
-            ITMChannelConfig::I32 => ITMPortConvType::I32(0),
-            ITMChannelConfig::F32 => ITMPortConvType::F32(0.0),
-            ITMChannelConfig::I16F16 => ITMPortConvType::I16F16(I16F16::ZERO),
-        }
-    }
+#[derive(Debug, Clone, Deserialize)]
+pub struct AppConfig {
+    pub port_conf: HashMap<usize, PortConfiguration>,
 }

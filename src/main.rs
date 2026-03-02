@@ -2,127 +2,53 @@
 #![feature(bool_to_result)]
 #![feature(never_type)]
 
-use foxglove::{
-    Channel,
-    schemas::{Log, Timestamp},
-};
-use std::{io::Read, net::TcpStream};
+use std::{env, fs::read_to_string, io::Read, net::TcpStream, path::Path, time::Duration};
 
+pub mod channel_adapter;
 pub mod config;
 pub mod itm_parser;
 pub mod messages;
 
-use crate::{
-    config::{AppConfig, ITMChannelConfig, PortConfiguration},
-    itm_parser::{ITMParseError, ITMParser, ITMPortConvType, MAX_MSG_PER_PCKT},
-};
-use crate::{itm_parser::NUM_ITM_PORTS, messages::NumericalMessage};
+use crate::{channel_adapter::ChannelAdapter, config::AppConfig, itm_parser::ItmParser};
 
-enum ChannelState {
-    Numerical { topic: Channel<NumericalMessage> },
-    CharStream { topic: Channel<Log>, buf: Vec<u8> },
-}
-
-// Number of CHAR's after which we force a flush to a foxglove Log
-// This should rarely happen as we flush on newlines from the ITM stream
-const AUTOFLUSH_LIMIT: usize = 100;
-
-impl ChannelState {
-    pub fn update(&mut self, values: heapless::Vec<ITMPortConvType, { MAX_MSG_PER_PCKT }>) {
-        match self {
-            ChannelState::CharStream { topic, buf } => {
-                for val in values {
-                    let chr: u8 = val.into();
-                    if buf.len() >= AUTOFLUSH_LIMIT || b'\n' == chr {
-                        topic.log(&Log {
-                            message: String::from_utf8_lossy(buf).into(),
-                            timestamp: Some(Timestamp::now()),
-                            ..Default::default()
-                        });
-                        buf.clear();
-                    }
-
-                    if b'\n' != chr {
-                        buf.push(chr);
-                    }
-                }
-            }
-            Self::Numerical { topic } => {
-                for val in values {
-                    topic.log(&NumericalMessage {
-                        timestamp: Some(Timestamp::now()),
-                        number: val.into(),
-                    });
-                }
-            }
-        }
-    }
-}
-
-impl From<PortConfiguration> for ChannelState {
-    fn from(conf: PortConfiguration) -> Self {
-        match conf.typ {
-            ITMChannelConfig::CHAR => ChannelState::CharStream {
-                topic: Channel::<Log>::new(&conf.name),
-                buf: Vec::new(),
-            },
-            _ => ChannelState::Numerical {
-                topic: Channel::<NumericalMessage>::new(&conf.name),
-            },
-        }
-    }
-}
+const LISTEN_ADDRESS: &str = "127.0.0.1:3344";
+const READ_BUF_SIZE: usize = 1024;
+const READ_TIMEOUT: Duration = Duration::from_millis(10);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // FIXME Add save/load logic for the config
-    let mut conf: AppConfig = AppConfig {
-        port_conf: [const { None }; NUM_ITM_PORTS],
-    };
-    conf.port_conf[0] = Some(PortConfiguration {
-        name: "CH0".into(),
-        typ: ITMChannelConfig::CHAR,
-    });
-    conf.port_conf[1] = Some(PortConfiguration {
-        name: "CH1".into(),
-        typ: ITMChannelConfig::I16F16,
-    });
-    conf.port_conf[2] = Some(PortConfiguration {
-        name: "CH2".into(),
-        typ: ITMChannelConfig::CHAR,
-    });
+    let args: Vec<String> = env::args().collect();
+    assert!(args.len() == 2, "Invalid argument count");
 
-    let mut parser = ITMParser::new(conf.port_conf.clone().map(|x| x.map(|y| y.into())));
+    let conf: AppConfig =
+        ron::from_str(&read_to_string(&Path::new(&args[1])).expect("Failed to open config file"))
+            .expect("Failed to parse config file");
+    let mut fox_chans: Vec<(usize, ChannelAdapter)> = Vec::from_iter(
+        conf.port_conf
+            .iter()
+            .map(|(&chan, conf)| (chan, conf.clone().into())),
+    );
 
-    let mut fox_chans: [Option<ChannelState>; NUM_ITM_PORTS] =
-        conf.port_conf.map(|x| x.map(|y| y.into()));
     foxglove::WebSocketServer::new()
         .start_blocking()
         .expect("Server failed to start");
 
-    let mut listener = TcpStream::connect("127.0.0.1:3344")?;
+    let mut listener = TcpStream::connect(LISTEN_ADDRESS)?;
     listener.set_nodelay(true)?;
+    listener.set_read_timeout(Some(READ_TIMEOUT))?;
 
+    let mut parser = ItmParser::new();
+    let mut buf = [0; READ_BUF_SIZE];
     loop {
-        let byte = listener.read_array::<1>()?[0];
-
-        let parsed = parser.update(byte);
-
-        if let Err(x) = &parsed {
-            match x {
-                ITMParseError::UnderfullPacket { .. } => {}
-                _ => eprintln!("{}", x),
+        if let Ok(len) = listener.read(&mut buf) {
+            for i in 0..len {
+                if let Err(x) = parser.update(buf[i]) {
+                    eprintln!("{}", x);
+                }
             }
-
-            continue;
         }
-        let val = parsed.unwrap();
-
-        print!("port {}: ", val.port);
-        for value in &val.data {
-            print!("{}", value);
+        for (chan, adapter) in fox_chans.iter_mut() {
+            // Keep updating until the stream is consumed
+            while adapter.update(&mut parser.streams[*chan]).is_some() {}
         }
-        println!();
-
-        fox_chans[val.port].as_mut().unwrap().update(val.data);
     }
 }
