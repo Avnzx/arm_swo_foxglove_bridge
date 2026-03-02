@@ -1,3 +1,7 @@
+[![Crates.io](https://img.shields.io/crates/v/arm_swo_foxglove_bridge.svg)](https://crates.io/crates/arm_swo_foxglove_bridge)
+[![License](https://img.shields.io/crates/l/arm_swo_foxglove_bridge.svg)](https://github.com/Avnzx/arm_swo_foxglove_bridge#license)
+[![Downloads](https://img.shields.io/crates/d/arm_swo_foxglove_bridge.svg)](https://crates.io/crates/arm_swo_foxglove_bridge)
+
 # About
 
 This tool splits ARM ITM values (with the TPIU formatter bypassed!) into
