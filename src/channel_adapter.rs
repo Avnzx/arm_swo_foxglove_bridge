@@ -86,6 +86,8 @@ impl ChannelAdapter {
 
                         message.push_str(&format!("{:02X}", stream.pop_front().unwrap()));
                     }
+                    // Reset the state for the next hexdump message
+                    *len = None;
 
                     topic.log(&Log {
                         message,
